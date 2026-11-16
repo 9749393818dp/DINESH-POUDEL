@@ -64,6 +64,18 @@ data class SavingsGoal(
   @ServerTimestamp val updatedAt: Timestamp? = null,
 )
 
+enum class KhataStatus {
+  PENDING,
+  PAID,
+}
+
+enum class KhataDueUrgency {
+  NONE,
+  UPCOMING,
+  DUE_TODAY,
+  OVERDUE,
+}
+
 @IgnoreExtraProperties
 data class KhataRecord(
   @DocumentId val id: String = "",
@@ -75,9 +87,45 @@ data class KhataRecord(
   val bsDate: String = "",
   val adTimestamp: String = "",
   val settled: Boolean = false,
+  val dueBsDate: String = "",
+  val dueAdDate: String = "",
+  val reminderEnabled: Boolean = false,
+  val paidBsDate: String = "",
+  val paidAdDate: String = "",
+  val notes: String = "",
   @ServerTimestamp val createdAt: Timestamp? = null,
   @ServerTimestamp val updatedAt: Timestamp? = null,
-)
+) {
+  fun status(): KhataStatus = if (settled) KhataStatus.PAID else KhataStatus.PENDING
+
+  fun resolvedDueAdIso(): String {
+    if (dueAdDate.isNotBlank() && com.example.domain.BsDateConverter.parseAdIso(dueAdDate) != null) {
+      return dueAdDate
+    }
+    if (dueBsDate.isNotBlank()) {
+      return com.example.domain.BsDateConverter.bsIsoToAd(dueBsDate)?.iso ?: ""
+    }
+    return ""
+  }
+
+  fun hasDueDate(): Boolean = dueBsDate.isNotBlank() || resolvedDueAdIso().isNotBlank()
+
+  fun daysUntilDue(todayAdIso: String): Int? {
+    if (settled) return null
+    val dueIso = resolvedDueAdIso()
+    if (dueIso.isBlank()) return null
+    return com.example.domain.BsDateConverter.signedDaysBetweenAdIso(todayAdIso, dueIso)
+  }
+
+  fun dueUrgency(todayAdIso: String): KhataDueUrgency {
+    val days = daysUntilDue(todayAdIso) ?: return KhataDueUrgency.NONE
+    return when {
+      days < 0 -> KhataDueUrgency.OVERDUE
+      days == 0 -> KhataDueUrgency.DUE_TODAY
+      else -> KhataDueUrgency.UPCOMING
+    }
+  }
+}
 
 @IgnoreExtraProperties
 data class AutoRecurringRule(

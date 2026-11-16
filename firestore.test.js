@@ -146,8 +146,9 @@ test("LedgerTransaction is append-only and enforces schema", async () => {
   await assertFails(txRef.delete());
 });
 
-test("KhataRecord terminal settlement lock prevents re-opening", async () => {
+test("KhataRecord paid/pending transitions, due date reminders, and strict schema validation", async () => {
   const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
   const khataRef = aliceDb.collection("users").doc(ALICE_UID).collection("khatas").doc("khata_1");
 
   await assertSucceeds(
@@ -160,15 +161,60 @@ test("KhataRecord terminal settlement lock prevents re-opening", async () => {
       bsDate: "2083-08-01",
       adTimestamp: "2026-11-16 11:35:00",
       settled: false,
+      dueBsDate: "2083-08-15",
+      dueAdDate: "2026-11-30",
+      reminderEnabled: true,
+      notes: "Return before month end",
       createdAt: ts(),
       updatedAt: ts(),
     })
   );
 
-  // Settle succeeds
-  await assertSucceeds(khataRef.update({ settled: true, updatedAt: ts() }));
-  // Re-opening after terminal settled=true fails
-  await assertFails(khataRef.update({ settled: false, updatedAt: ts() }));
+  // Mark Paid succeeds
+  await assertSucceeds(
+    khataRef.update({
+      settled: true,
+      paidBsDate: "2083-08-10",
+      paidAdDate: "2026-11-25",
+      updatedAt: ts(),
+    })
+  );
+
+  // Mark back to Pending succeeds
+  await assertSucceeds(
+    khataRef.update({
+      settled: false,
+      paidBsDate: "",
+      paidAdDate: "",
+      updatedAt: ts(),
+    })
+  );
+
+  // Update due date reminder & notes succeeds
+  await assertSucceeds(
+    khataRef.update({
+      dueBsDate: "2083-08-20",
+      dueAdDate: "2026-12-05",
+      reminderEnabled: false,
+      notes: "Rescheduled",
+      updatedAt: ts(),
+    })
+  );
+
+  // Modifying immutable fields (amountNpr, type, userId) or ghost fields fails
+  await assertFails(khataRef.update({ amountNpr: 500.0, updatedAt: ts() }));
+  await assertFails(khataRef.update({ type: "BORROW", updatedAt: ts() }));
+  await assertFails(khataRef.update({ reminderEnabled: true, extraField: "bad", updatedAt: ts() }));
+
+  // Cross-user update and delete fail
+  await assertFails(bobDb.collection("users").doc(ALICE_UID).collection("khatas").doc("khata_1").update({
+    settled: true,
+    updatedAt: ts(),
+  }));
+  await assertFails(bobDb.collection("users").doc(ALICE_UID).collection("khatas").doc("khata_1").delete());
+
+  // Owner delete succeeds
+  await assertSucceeds(khataRef.delete());
 });
 
 test("SavingsGoal and AutoRecurringRule validation", async () => {

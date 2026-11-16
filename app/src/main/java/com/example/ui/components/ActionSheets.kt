@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -10,22 +11,28 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -670,7 +677,7 @@ fun SavingDepositBottomSheet(
   }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun KhataBottomSheet(
   type: String,
@@ -678,13 +685,27 @@ fun KhataBottomSheet(
   displayCurrency: String,
   initialFormat: CalendarFormat = CalendarFormat.BS,
   onDismiss: () -> Unit,
-  onSubmit: (partyName: String, itemDetail: String, amount: String, accountId: String, dateMillis: Long) -> Unit,
+  onSubmit: (
+    partyName: String,
+    itemDetail: String,
+    amount: String,
+    accountId: String,
+    dateMillis: Long,
+    dueDateMillis: Long?,
+    reminderEnabled: Boolean,
+    notes: String,
+  ) -> Unit,
 ) {
   val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
   var party by remember { mutableStateOf("") }
   var item by remember { mutableStateOf("") }
   var amount by remember { mutableStateOf("") }
+  var notes by remember { mutableStateOf("") }
   var selectedDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+  var dueReminderEnabled by remember { mutableStateOf(false) }
+  var dueDateMillis by remember {
+    mutableLongStateOf(System.currentTimeMillis() + 7L * 86_400_000L)
+  }
   var calendarFormat by remember { mutableStateOf(initialFormat) }
   var selectedAccId by remember {
     mutableStateOf(if (accounts.isNotEmpty()) accounts.first().id else "CREDIT_ONLY")
@@ -710,7 +731,9 @@ fun KhataBottomSheet(
         onValueChange = { party = it },
         label = { Text(if (type == "LEND") "व्यक्तिको नाम" else "पसल वा व्यक्तिको नाम") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("khata_party_input"),
       )
       Spacer(modifier = Modifier.height(8.dp))
       OutlinedTextField(
@@ -718,7 +741,9 @@ fun KhataBottomSheet(
         onValueChange = { item = it },
         label = { Text("सामानको विवरण / कारण (उदा: चामल, तेल, सापटी)") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("khata_item_input"),
       )
       Spacer(modifier = Modifier.height(8.dp))
       OutlinedTextField(
@@ -727,7 +752,9 @@ fun KhataBottomSheet(
         label = { Text("रकम ($displayCurrency)") },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("khata_amount_input"),
       )
       Spacer(modifier = Modifier.height(8.dp))
       DualCalendarDateField(
@@ -739,6 +766,79 @@ fun KhataBottomSheet(
         dialogTitle = "सापटी/उधारो मिति छान्नुहोस्",
         testTag = "khata_date_picker_field",
       )
+      Spacer(modifier = Modifier.height(8.dp))
+
+      // Due Date Reminder Section
+      Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        modifier = Modifier.fillMaxWidth(),
+      ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.weight(1f),
+            ) {
+              Icon(
+                imageVector = Icons.Filled.NotificationsActive,
+                contentDescription = null,
+                tint = EmeraldPrimary,
+                modifier = Modifier.size(20.dp),
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Column {
+                Text(
+                  text = "देय मिति र रिमाइन्डर (Due Reminder)",
+                  style = MaterialTheme.typography.titleSmall,
+                  fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                  text = "भुक्तानी मिति तोकेर अलर्ट पाउनुहोस्",
+                  style = MaterialTheme.typography.labelSmall,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+              }
+            }
+            Switch(
+              checked = dueReminderEnabled,
+              onCheckedChange = { dueReminderEnabled = it },
+              modifier = Modifier.testTag("khata_due_reminder_switch"),
+            )
+          }
+
+          if (dueReminderEnabled) {
+            Spacer(modifier = Modifier.height(10.dp))
+            FlowRow(
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+              verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+              listOf(7 to "+७ दिन", 15 to "+१५ दिन", 30 to "+३० दिन").forEach { (days, label) ->
+                SuggestionChip(
+                  onClick = { dueDateMillis = selectedDateMillis + days.toLong() * 86_400_000L },
+                  label = { Text(label) },
+                )
+              }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            DualCalendarDateField(
+              label = "फिर्ता / भुक्तानी देय मिति (Due Date BS / AD)",
+              selectedAdMillis = dueDateMillis,
+              format = calendarFormat,
+              onFormatChange = { calendarFormat = it },
+              onDateSelected = { dueDateMillis = it },
+              dialogTitle = "देय मिति छान्नुहोस्",
+              testTag = "khata_due_date_picker_field",
+            )
+          }
+        }
+      }
+
       Spacer(modifier = Modifier.height(8.dp))
       ExposedDropdownMenuBox(expanded = accExp, onExpandedChange = { accExp = !accExp }) {
         val label = if (selectedAccId == "CREDIT_ONLY") {
@@ -769,14 +869,36 @@ fun KhataBottomSheet(
           }
         }
       }
+      Spacer(modifier = Modifier.height(8.dp))
+      OutlinedTextField(
+        value = notes,
+        onValueChange = { notes = it },
+        label = { Text("थप नोट / सम्पर्क (ऐच्छिक)") },
+        singleLine = true,
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("khata_notes_input"),
+      )
       Spacer(modifier = Modifier.height(14.dp))
       Button(
         onClick = {
-          onSubmit(party, item, amount, selectedAccId, selectedDateMillis)
+          onSubmit(
+            party,
+            item,
+            amount,
+            selectedAccId,
+            selectedDateMillis,
+            if (dueReminderEnabled) dueDateMillis else null,
+            dueReminderEnabled,
+            notes,
+          )
           onDismiss()
         },
         enabled = party.trim().isNotEmpty() && (amount.toDoubleOrNull() ?: 0.0) > 0.0,
-        modifier = Modifier.fillMaxWidth().height(50.dp),
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(50.dp)
+          .testTag("khata_submit_button"),
       ) {
         Text("रेकर्ड सुरक्षित गर्नुहोस्")
       }

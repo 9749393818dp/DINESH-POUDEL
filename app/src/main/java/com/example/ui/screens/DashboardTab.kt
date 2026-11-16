@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Visibility
@@ -43,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,9 +57,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.KhataDueUrgency
 import com.example.data.model.LedgerTransaction
 import com.example.data.model.UserAccount
 import com.example.domain.AppLocalizations
+import com.example.domain.BsDateConverter
 import com.example.domain.CurrencyService
 import com.example.domain.InstitutionCatalog
 import com.example.ui.MeruHisabUiState
@@ -66,8 +70,10 @@ import com.example.ui.theme.EmeraldDeep
 import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.EmeraldSecondary
 import com.example.ui.theme.ExpenseRed
+import com.example.ui.theme.ExpenseRedSoft
 import com.example.ui.theme.IncomeGreen
 import com.example.ui.theme.LendOrange
+import com.example.ui.theme.MarigoldContainer
 import com.example.ui.theme.SavingAmber
 
 @Composable
@@ -83,6 +89,7 @@ fun DashboardTab(
   onLendClick: () -> Unit,
   onBorrowClick: () -> Unit,
   onViewAllStatements: () -> Unit,
+  onOpenKhataTab: () -> Unit,
   onTransactionClick: (LedgerTransaction) -> Unit,
 ) {
   val lang = state.preferences.lang
@@ -91,6 +98,12 @@ fun DashboardTab(
   val totalNpr = state.totalBalanceNpr
   val monthInc = state.currentMonthIncomeNpr(nowMillis)
   val monthExp = state.currentMonthExpenseNpr(nowMillis)
+  val todayAdIso = remember(nowMillis / 60_000L) {
+    BsDateConverter.clampAdDate(BsDateConverter.millisToAdDate(nowMillis)).iso
+  }
+  val khataDueAlerts = remember(state.khatas, todayAdIso) {
+    state.dueReminderKhatas(todayAdIso)
+  }
 
   Box(
     modifier = Modifier.fillMaxSize(),
@@ -279,7 +292,57 @@ fun DashboardTab(
             }
           }
         }
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(14.dp))
+      }
+
+      if (khataDueAlerts.isNotEmpty()) {
+        item {
+          val overdue = khataDueAlerts.count { it.dueUrgency(todayAdIso) == KhataDueUrgency.OVERDUE }
+          val bannerBg = if (overdue > 0) ExpenseRedSoft else MarigoldContainer
+          val accent = if (overdue > 0) ExpenseRed else SavingAmber
+          Card(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clickable(onClick = onOpenKhataTab)
+              .testTag("dashboard_khata_reminder_card"),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = bannerBg),
+            border = BorderStroke(1.dp, accent.copy(alpha = 0.45f)),
+          ) {
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              Icon(Icons.Filled.NotificationsActive, contentDescription = null, tint = accent)
+              Spacer(modifier = Modifier.width(10.dp))
+              Column(modifier = Modifier.weight(1f)) {
+                Text(
+                  text = if (overdue > 0) {
+                    "सापटी/उधारो देय मिति अलर्ट (${khataDueAlerts.size})"
+                  } else {
+                    "आगामी भुक्तानी रिमाइन्डर (${khataDueAlerts.size})"
+                  },
+                  style = MaterialTheme.typography.titleSmall,
+                  fontWeight = FontWeight.Bold,
+                  color = accent,
+                )
+                val top = khataDueAlerts.first()
+                Text(
+                  text = "${top.partyName} • ${CurrencyService.format(top.amountNpr, currency, hidden)}",
+                  style = MaterialTheme.typography.bodySmall,
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis,
+                )
+              }
+              TextButton(onClick = onOpenKhataTab) {
+                Text("खोल्नुहोस्", color = accent, fontWeight = FontWeight.Bold)
+              }
+            }
+          }
+          Spacer(modifier = Modifier.height(14.dp))
+        }
       }
 
       // 3. My Banks & Wallets

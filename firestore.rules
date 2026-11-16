@@ -80,6 +80,12 @@ service cloud.firestore {
              data.bsDate is string && data.bsDate.size() >= 1 && data.bsDate.size() <= 20 &&
              data.adTimestamp is string && data.adTimestamp.size() >= 1 && data.adTimestamp.size() <= 40 &&
              data.settled is bool &&
+             (!('dueBsDate' in data) || (data.dueBsDate is string && data.dueBsDate.size() <= 20)) &&
+             (!('dueAdDate' in data) || (data.dueAdDate is string && data.dueAdDate.size() <= 20)) &&
+             (!('reminderEnabled' in data) || data.reminderEnabled is bool) &&
+             (!('paidBsDate' in data) || (data.paidBsDate is string && data.paidBsDate.size() <= 20)) &&
+             (!('paidAdDate' in data) || (data.paidAdDate is string && data.paidAdDate.size() <= 20)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 300)) &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
              data.updatedAt is timestamp && data.updatedAt <= request.time;
     }
@@ -191,7 +197,13 @@ service cloud.firestore {
 
         allow create: if isOwner(userId) && isValidId(khataId) &&
                          incoming().keys().hasAll(['userId', 'type', 'partyName', 'itemDetail', 'amountNpr', 'bsDate', 'adTimestamp', 'settled', 'createdAt', 'updatedAt']) &&
-                         incoming().keys().hasOnly(['userId', 'type', 'partyName', 'itemDetail', 'amountNpr', 'bsDate', 'adTimestamp', 'settled', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'type', 'partyName', 'itemDetail', 'amountNpr',
+                           'bsDate', 'adTimestamp', 'settled',
+                           'dueBsDate', 'dueAdDate', 'reminderEnabled',
+                           'paidBsDate', 'paidAdDate', 'notes',
+                           'createdAt', 'updatedAt'
+                         ]) &&
                          isValidKhataRecord(incoming(), userId);
 
         allow update: if isOwner(userId) && isValidId(khataId) &&
@@ -199,9 +211,12 @@ service cloud.firestore {
                          incoming().userId == existing().userId &&
                          incoming().type == existing().type &&
                          incoming().createdAt == existing().createdAt &&
-                         existing().settled == false &&
-                         incoming().settled == true &&
-                         incoming().diff(existing()).affectedKeys().hasOnly(['settled', 'updatedAt']);
+                         (
+                           // Action: Mark as Paid or Pending
+                           incoming().diff(existing()).affectedKeys().hasOnly(['settled', 'paidBsDate', 'paidAdDate', 'updatedAt']) ||
+                           // Action: Update Due Date Reminder or Notes
+                           incoming().diff(existing()).affectedKeys().hasOnly(['dueBsDate', 'dueAdDate', 'reminderEnabled', 'notes', 'updatedAt'])
+                         );
 
         allow delete: if isOwner(userId) && isValidId(khataId);
       }

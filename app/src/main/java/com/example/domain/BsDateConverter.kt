@@ -398,4 +398,17 @@ object BsDateConverter {
       365
     }
   }
+
+  /**
+   * Returns signed day difference (`toAdIso - fromAdIso`) in days using UTC midnight arithmetic,
+   * or null if either ISO date string cannot be parsed.
+   * Negative = overdue (`toAdIso` is before `fromAdIso`), 0 = due today, positive = upcoming.
+   */
+  fun signedDaysBetweenAdIso(fromAdIso: String, toAdIso: String): Int? {
+    val from = parseAdIso(fromAdIso) ?: return null
+    val to = parseAdIso(toAdIso) ?: return null
+    val fromMillis = utcCalendar(from.year, from.month, from.day).timeInMillis
+    val toMillis = utcCalendar(to.year, to.month, to.day).timeInMillis
+    return ((toMillis - fromMillis) / MILLIS_PER_DAY).toInt()
+  }
 }

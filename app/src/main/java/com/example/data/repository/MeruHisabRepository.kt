@@ -329,10 +329,13 @@ class MeruHisabRepository(
           )
         }
         if (khataToSettle != null) {
+          val paidAdIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(nowDate)
           batch.update(
             khatasCol(uid).document(khataToSettle.id),
             mapOf(
               "settled" to true,
+              "paidBsDate" to bs.iso,
+              "paidAdDate" to paidAdIso,
               "updatedAt" to FieldValue.serverTimestamp(),
             )
           )
@@ -418,12 +421,16 @@ class MeruHisabRepository(
     itemDetail: String,
     amountNpr: Double,
     nowMillis: Long = System.currentTimeMillis(),
+    dueBsDate: String = "",
+    dueAdDate: String = "",
+    reminderEnabled: Boolean = false,
+    notes: String = "",
   ): Result<String> {
     val uid = requireUserId()
     val bs = BsCalendar.adToBs(nowMillis)
     val adStamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(nowMillis))
     val docRef = khatasCol(uid).document()
-    val payload = mapOf(
+    val payload = hashMapOf<String, Any>(
       "userId" to uid,
       "type" to type,
       "partyName" to partyName.take(120),
@@ -432,6 +439,12 @@ class MeruHisabRepository(
       "bsDate" to bs.iso,
       "adTimestamp" to adStamp,
       "settled" to false,
+      "dueBsDate" to dueBsDate.take(20),
+      "dueAdDate" to dueAdDate.take(20),
+      "reminderEnabled" to reminderEnabled,
+      "paidBsDate" to "",
+      "paidAdDate" to "",
+      "notes" to notes.take(300),
       "createdAt" to FieldValue.serverTimestamp(),
       "updatedAt" to FieldValue.serverTimestamp(),
     )
@@ -442,6 +455,75 @@ class MeruHisabRepository(
       throw e
     } catch (e: Exception) {
       handleFirestoreError(e, OperationType.CREATE, docRef.path)
+      Result.failure(e)
+    }
+  }
+
+  suspend fun setKhataStatus(
+    khataId: String,
+    paid: Boolean,
+    nowMillis: Long = System.currentTimeMillis(),
+  ): Result<Unit> {
+    val uid = requireUserId()
+    val docRef = khatasCol(uid).document(khataId)
+    val paidBs = if (paid) BsCalendar.adToBs(nowMillis).iso else ""
+    val paidAd = if (paid) SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(nowMillis)) else ""
+    return try {
+      docRef.update(
+        mapOf(
+          "settled" to paid,
+          "paidBsDate" to paidBs,
+          "paidAdDate" to paidAd,
+          "updatedAt" to FieldValue.serverTimestamp(),
+        )
+      ).await()
+      Result.success(Unit)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      handleFirestoreError(e, OperationType.UPDATE, docRef.path)
+      Result.failure(e)
+    }
+  }
+
+  suspend fun updateKhataDueReminder(
+    khataId: String,
+    dueBsDate: String,
+    dueAdDate: String,
+    reminderEnabled: Boolean,
+    notes: String,
+  ): Result<Unit> {
+    val uid = requireUserId()
+    val docRef = khatasCol(uid).document(khataId)
+    return try {
+      docRef.update(
+        mapOf(
+          "dueBsDate" to dueBsDate.take(20),
+          "dueAdDate" to dueAdDate.take(20),
+          "reminderEnabled" to reminderEnabled,
+          "notes" to notes.take(300),
+          "updatedAt" to FieldValue.serverTimestamp(),
+        )
+      ).await()
+      Result.success(Unit)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      handleFirestoreError(e, OperationType.UPDATE, docRef.path)
+      Result.failure(e)
+    }
+  }
+
+  suspend fun deleteKhata(khataId: String): Result<Unit> {
+    val uid = requireUserId()
+    val docRef = khatasCol(uid).document(khataId)
+    return try {
+      docRef.delete().await()
+      Result.success(Unit)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      handleFirestoreError(e, OperationType.DELETE, docRef.path)
       Result.failure(e)
     }
   }

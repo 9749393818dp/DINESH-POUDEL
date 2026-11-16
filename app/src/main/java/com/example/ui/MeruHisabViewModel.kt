@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.AutoRecurringRule
+import com.example.data.model.KhataDueUrgency
 import com.example.data.model.KhataRecord
 import com.example.data.model.LedgerTransaction
 import com.example.data.model.SavingsGoal
@@ -11,6 +12,7 @@ import com.example.data.model.UserAccount
 import com.example.data.model.UserPreferences
 import com.example.data.repository.MeruHisabRepository
 import com.example.domain.BsCalendar
+import com.example.domain.BsDateConverter
 import com.example.domain.CurrencyService
 import com.example.domain.InstitutionCatalog
 import com.example.domain.MathEvaluator
@@ -56,6 +58,25 @@ data class MeruHisabUiState(
     return transactions
       .filter { it.type == "EXPENSE" && it.bsYear == bs.year.toLong() && it.bsMonth == bs.month.toLong() }
       .sumOf { it.amountNpr }
+  }
+
+  val pendingLendTotalNpr: Double
+    get() = khatas.filter { !it.settled && it.type == "LEND" }.sumOf { it.amountNpr }
+
+  val pendingBorrowTotalNpr: Double
+    get() = khatas.filter { !it.settled && it.type == "BORROW" }.sumOf { it.amountNpr }
+
+  fun dueReminderKhatas(todayAdIso: String): List<KhataRecord> {
+    return khatas
+      .filter { khata ->
+        if (khata.settled) return@filter false
+        val urgency = khata.dueUrgency(todayAdIso)
+        val days = khata.daysUntilDue(todayAdIso) ?: return@filter false
+        urgency == KhataDueUrgency.OVERDUE ||
+          urgency == KhataDueUrgency.DUE_TODAY ||
+          (khata.reminderEnabled && days <= 3)
+      }
+      .sortedBy { it.daysUntilDue(todayAdIso) ?: Int.MAX_VALUE }
   }
 }
 
@@ -353,12 +374,18 @@ class MeruHisabViewModel(
     amountInput: String,
     accountId: String,
     nowMillis: Long = System.currentTimeMillis(),
+    dueDateMillis: Long? = null,
+    reminderEnabled: Boolean = false,
+    notes: String = "",
   ) {
     val amount = amountInput.toDoubleOrNull() ?: 0.0
     if (partyName.trim().isEmpty() || amount <= 0.0) return
     val currency = uiState.value.preferences.displayCurrency
     val nprVal = CurrencyService.toNpr(amount, currency)
     val detail = itemDetail.trim().ifEmpty { "नगद/सामान" }
+    val dueAd = dueDateMillis?.let { BsDateConverter.clampAdDate(BsDateConverter.millisToAdDate(it)) }
+    val dueAdIso = dueAd?.iso ?: ""
+    val dueBsIso = dueAd?.let { BsDateConverter.adToBsDate(it).iso } ?: ""
 
     viewModelScope.launch {
       val addRes = repository.addKhata(
@@ -367,6 +394,10 @@ class MeruHisabViewModel(
         itemDetail = detail,
         amountNpr = nprVal,
         nowMillis = nowMillis,
+        dueBsDate = dueBsIso,
+        dueAdDate = dueAdIso,
+        reminderEnabled = reminderEnabled && dueDateMillis != null,
+        notes = notes.trim(),
       )
       if (addRes.isFailure) {
         _feedbackMessage.value = addRes.exceptionOrNull()?.localizedMessage ?: "Failed to save khata"
@@ -385,13 +416,24 @@ class MeruHisabViewModel(
           nowMillis = nowMillis,
         )
         txRes.onSuccess { tx -> _latestSlipTx.value = tx }
+      } else {
+        _feedbackMessage.value = "सापटी/उधारो खाता सुरक्षित गरियो।"
       }
     }
   }
 
   fun settleKhata(khata: KhataRecord, accountId: String) {
-    val acc = uiState.value.accounts.firstOrNull { it.id == accountId } ?: return
     viewModelScope.launch {
+      if (accountId == STATUS_ONLY_ACCOUNT_ID) {
+        val res = repository.setKhataStatus(khata.id, paid = true)
+        res.onSuccess {
+          _feedbackMessage.value = "${khata.partyName} को हिसाब भुक्तानी (Paid) चिन्ह लगाइयो।"
+        }.onFailure {
+          _feedbackMessage.value = it.localizedMessage ?: "Failed to update khata status"
+        }
+        return@launch
+      }
+      val acc = uiState.value.accounts.firstOrNull { it.id == accountId } ?: return@launch
       val txType = if (khata.type == "LEND") "INCOME" else "EXPENSE"
       val title = if (khata.type == "LEND") "सापटी फिर्ता: ${khata.partyName}" else "उधारो भुक्तानी: ${khata.partyName}"
       val res = repository.executeTransaction(
@@ -406,6 +448,80 @@ class MeruHisabViewModel(
       )
       res.onSuccess { tx -> _latestSlipTx.value = tx }
         .onFailure { _feedbackMessage.value = it.localizedMessage ?: "Failed to settle khata" }
+    }
+  }
+
+  fun markKhataPending(khata: KhataRecord) {
+    viewModelScope.launch {
+      val res = repository.setKhataStatus(khata.id, paid = false)
+      res.onSuccess {
+        _feedbackMessage.value = "${khata.partyName} को हिसाब पुनः बाँकी (Pending) मा राखियो।"
+      }.onFailure {
+        _feedbackMessage.value = it.localizedMessage ?: "Failed to mark pending"
+      }
+    }
+  }
+
+  fun toggleKhataReminder(khata: KhataRecord) {
+    if (!khata.hasDueDate()) return
+    val nextEnabled = !khata.reminderEnabled
+    viewModelScope.launch {
+      val res = repository.updateKhataDueReminder(
+        khataId = khata.id,
+        dueBsDate = khata.dueBsDate,
+        dueAdDate = khata.dueAdDate,
+        reminderEnabled = nextEnabled,
+        notes = khata.notes,
+      )
+      res.onSuccess {
+        _feedbackMessage.value = if (nextEnabled) {
+          "${khata.partyName} को देय मिति रिमाइन्डर चालु गरियो।"
+        } else {
+          "${khata.partyName} को रिमाइन्डर बन्द गरियो।"
+        }
+      }.onFailure {
+        _feedbackMessage.value = it.localizedMessage ?: "Failed to update reminder"
+      }
+    }
+  }
+
+  fun updateKhataDueReminder(
+    khataId: String,
+    dueDateMillis: Long?,
+    reminderEnabled: Boolean,
+    notes: String,
+  ) {
+    val dueAd = dueDateMillis?.let { BsDateConverter.clampAdDate(BsDateConverter.millisToAdDate(it)) }
+    val dueAdIso = dueAd?.iso ?: ""
+    val dueBsIso = dueAd?.let { BsDateConverter.adToBsDate(it).iso } ?: ""
+    viewModelScope.launch {
+      val res = repository.updateKhataDueReminder(
+        khataId = khataId,
+        dueBsDate = dueBsIso,
+        dueAdDate = dueAdIso,
+        reminderEnabled = reminderEnabled && dueDateMillis != null,
+        notes = notes.trim(),
+      )
+      res.onSuccess {
+        _feedbackMessage.value = if (dueDateMillis != null) {
+          "देय मिति रिमाइन्डर अद्यावधिक गरियो।"
+        } else {
+          "देय मिति रिमाइन्डर हटाइयो।"
+        }
+      }.onFailure {
+        _feedbackMessage.value = it.localizedMessage ?: "Failed to save reminder"
+      }
+    }
+  }
+
+  fun deleteKhata(khataId: String) {
+    viewModelScope.launch {
+      val res = repository.deleteKhata(khataId)
+      res.onSuccess {
+        _feedbackMessage.value = "खाता रेकर्ड मेटाइयो।"
+      }.onFailure {
+        _feedbackMessage.value = it.localizedMessage ?: "Failed to delete khata"
+      }
     }
   }
 
@@ -505,8 +621,9 @@ class MeruHisabViewModel(
     }
   }
 
-  private companion object {
-    const val TAG = "MeruHisabVM"
-    const val STOP_TIMEOUT_MILLIS = 5000L
+  companion object {
+    const val STATUS_ONLY_ACCOUNT_ID = "STATUS_ONLY"
+    private const val TAG = "MeruHisabVM"
+    private const val STOP_TIMEOUT_MILLIS = 5000L
   }
 }

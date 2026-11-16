@@ -81,7 +81,7 @@
     },
     "KhataRecord": {
       "title": "KhataRecord",
-      "description": "Lending (LEND) or Borrowing/Udharo (BORROW) record with settlement status.",
+      "description": "Lending (LEND) or Borrowing/Udharo (BORROW) record with paid/pending status and due date reminders.",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
@@ -92,6 +92,12 @@
         "bsDate": { "type": "string" },
         "adTimestamp": { "type": "string" },
         "settled": { "type": "boolean" },
+        "dueBsDate": { "type": "string", "description": "Optional BS due date (YYYY-MM-DD) or empty when unset." },
+        "dueAdDate": { "type": "string", "description": "Optional AD due date (YYYY-MM-DD) or empty when unset." },
+        "reminderEnabled": { "type": "boolean", "description": "Whether due date reminder is enabled." },
+        "paidBsDate": { "type": "string", "description": "BS date when marked paid, or empty when pending." },
+        "paidAdDate": { "type": "string", "description": "AD date when marked paid, or empty when pending." },
+        "notes": { "type": "string", "description": "Optional memo or contact note." },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },

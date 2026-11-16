@@ -77,13 +77,87 @@ class MeruHisabRepositoryRuleTest : FirestoreEmulatorTestBase() {
     assertTrue(goalRes.isSuccess)
 
     val khataRes = withTimeout(DEFAULT_TIMEOUT_MS) {
-      repo.addKhata("LEND", "Sita", "Cash lend", 1500.0)
+      repo.addKhata(
+        type = "LEND",
+        partyName = "Sita",
+        itemDetail = "Cash lend",
+        amountNpr = 1500.0,
+        dueBsDate = "2083-08-25",
+        dueAdDate = "2026-12-10",
+        reminderEnabled = true,
+        notes = "Call before evening",
+      )
     }
-    assertTrue(khataRes.isSuccess)
+    assertTrue("addKhata failed: ${khataRes.exceptionOrNull()}", khataRes.isSuccess)
+    val khataId = khataRes.getOrThrow()
+
+    val createdKhata = withTimeout(FLOW_TIMEOUT_MS) {
+      repo.observeKhatas(uid).first { list -> list.any { it.id == khataId } }
+    }.first { it.id == khataId }
+    assertEquals("2083-08-25", createdKhata.dueBsDate)
+    assertEquals("2026-12-10", createdKhata.dueAdDate)
+    assertTrue(createdKhata.reminderEnabled)
+    assertEquals("Call before evening", createdKhata.notes)
+
+    val paidRes = withTimeout(DEFAULT_TIMEOUT_MS) { repo.setKhataStatus(khataId, paid = true) }
+    assertTrue("setKhataStatus(true) failed: ${paidRes.exceptionOrNull()}", paidRes.isSuccess)
+    val paidKhata = withTimeout(FLOW_TIMEOUT_MS) {
+      repo.observeKhatas(uid).first { list -> list.firstOrNull { it.id == khataId }?.settled == true }
+    }.first { it.id == khataId }
+    assertTrue(paidKhata.paidAdDate.isNotBlank())
+
+    val pendingRes = withTimeout(DEFAULT_TIMEOUT_MS) { repo.setKhataStatus(khataId, paid = false) }
+    assertTrue("setKhataStatus(false) failed: ${pendingRes.exceptionOrNull()}", pendingRes.isSuccess)
+    val pendingKhata = withTimeout(FLOW_TIMEOUT_MS) {
+      repo.observeKhatas(uid).first { list -> list.firstOrNull { it.id == khataId }?.settled == false }
+    }.first { it.id == khataId }
+    assertEquals("", pendingKhata.paidAdDate)
+
+    val reminderRes = withTimeout(DEFAULT_TIMEOUT_MS) {
+      repo.updateKhataDueReminder(
+        khataId = khataId,
+        dueBsDate = "2083-09-01",
+        dueAdDate = "2026-12-16",
+        reminderEnabled = false,
+        notes = "Extended due date",
+      )
+    }
+    assertTrue("updateKhataDueReminder failed: ${reminderRes.exceptionOrNull()}", reminderRes.isSuccess)
+    val updatedReminderKhata = withTimeout(FLOW_TIMEOUT_MS) {
+      repo.observeKhatas(uid).first { list ->
+        list.firstOrNull { it.id == khataId }?.dueAdDate == "2026-12-16"
+      }
+    }.first { it.id == khataId }
+    assertEquals(false, updatedReminderKhata.reminderEnabled)
+    assertEquals("Extended due date", updatedReminderKhata.notes)
 
     val accId = withTimeout(DEFAULT_TIMEOUT_MS) {
       repo.addAccount("cash", "Cash", 5000.0).getOrThrow()
     }
+    val acc = withTimeout(FLOW_TIMEOUT_MS) {
+      repo.observeAccounts(uid).first { list -> list.any { it.id == accId } }
+    }.first { it.id == accId }
+
+    val settleTxRes = withTimeout(DEFAULT_TIMEOUT_MS) {
+      repo.executeTransaction(
+        type = "INCOME",
+        title = "Sita Return",
+        category = "🤝 सापटी / उधारो (Lending / Udharo)",
+        amount = 1500.0,
+        currency = "NPR",
+        sourceAccount = acc,
+        khataToSettle = updatedReminderKhata,
+      )
+    }
+    assertTrue("executeTransaction(settle) failed: ${settleTxRes.exceptionOrNull()}", settleTxRes.isSuccess)
+    val settledViaTx = withTimeout(FLOW_TIMEOUT_MS) {
+      repo.observeKhatas(uid).first { list -> list.firstOrNull { it.id == khataId }?.settled == true }
+    }.first { it.id == khataId }
+    assertTrue(settledViaTx.paidBsDate.isNotBlank())
+
+    val deleteRes = withTimeout(DEFAULT_TIMEOUT_MS) { repo.deleteKhata(khataId) }
+    assertTrue("deleteKhata failed: ${deleteRes.exceptionOrNull()}", deleteRes.isSuccess)
+
     val ruleRes = withTimeout(DEFAULT_TIMEOUT_MS) {
       repo.addRecurringRule(
         type = "EXPENSE",

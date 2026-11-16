@@ -15,16 +15,16 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Handshake
-import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.DropdownMenu
@@ -204,7 +204,7 @@ private fun MainShellRoute(
 
   val navItems = listOf(
     Triple(AppLocalizations.t(lang, "tab_home"), Icons.Filled.Dashboard, Icons.Outlined.Dashboard),
-    Triple(AppLocalizations.t(lang, "tab_statement"), Icons.Filled.ReceiptLong, Icons.Outlined.ReceiptLong),
+    Triple(AppLocalizations.t(lang, "tab_statement"), Icons.AutoMirrored.Filled.ReceiptLong, Icons.AutoMirrored.Outlined.ReceiptLong),
     Triple(AppLocalizations.t(lang, "tab_goals"), Icons.Filled.Savings, Icons.Outlined.Savings),
     Triple(AppLocalizations.t(lang, "tab_khata"), Icons.Filled.Handshake, Icons.Outlined.Handshake),
     Triple(AppLocalizations.t(lang, "tab_settings"), Icons.Filled.Settings, Icons.Outlined.Settings),
@@ -417,6 +417,7 @@ private fun MainShellRoute(
               onLendClick = { openKhata("LEND") },
               onBorrowClick = { openKhata("BORROW") },
               onViewAllStatements = { selectedTab = 1 },
+              onOpenKhataTab = { selectedTab = 3 },
               onTransactionClick = viewModel::showSlip,
             )
 
@@ -441,12 +442,16 @@ private fun MainShellRoute(
 
             3 -> KhataTab(
               state = state,
+              nowMillis = nowMillis,
+              calendarFormat = calendarFormat,
+              onCalendarFormatChange = { calendarFormat = it },
               onLendClick = { openKhata("LEND") },
               onBorrowClick = { openKhata("BORROW") },
               onSettleKhata = viewModel::settleKhata,
-              onNeedAccountWarning = {
-                scope.launchSnack(snackbarHostState, "पहिले कम्तीमा एउटा बैंक वा नगद खाता थप्नुहोस्।")
-              },
+              onMarkPending = viewModel::markKhataPending,
+              onToggleReminder = viewModel::toggleKhataReminder,
+              onUpdateDueReminder = viewModel::updateKhataDueReminder,
+              onDeleteKhata = viewModel::deleteKhata,
             )
 
             4 -> SettingsTab(
@@ -532,8 +537,18 @@ private fun MainShellRoute(
       displayCurrency = displayCurrency,
       initialFormat = calendarFormat,
       onDismiss = { khataSheetType = null },
-      onSubmit = { party, item, amt, accId, dateMillis ->
-        viewModel.addKhata(type, party, item, amt, accId, dateMillis)
+      onSubmit = { party, item, amt, accId, dateMillis, dueMillis, reminderEnabled, notes ->
+        viewModel.addKhata(
+          type = type,
+          partyName = party,
+          itemDetail = item,
+          amountInput = amt,
+          accountId = accId,
+          nowMillis = dateMillis,
+          dueDateMillis = dueMillis,
+          reminderEnabled = reminderEnabled,
+          notes = notes,
+        )
       },
     )
   }

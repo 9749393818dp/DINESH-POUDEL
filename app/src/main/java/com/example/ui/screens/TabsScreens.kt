@@ -21,8 +21,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.CallMade
-import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Autorenew
@@ -34,28 +32,20 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.VerifiedUser
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,13 +59,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.example.data.model.AutoRecurringRule
-import com.example.data.model.KhataRecord
 import com.example.data.model.LedgerTransaction
 import com.example.data.model.SavingsGoal
-import com.example.data.model.UserAccount
 import com.example.domain.BsCalendar
 import com.example.domain.BsDateConverter
 import com.example.domain.CalendarFormat
@@ -86,7 +73,6 @@ import com.example.ui.components.IncomeExpenseBarChart
 import com.example.ui.components.TransactionRowCard
 import com.example.ui.theme.EmeraldContainer
 import com.example.ui.theme.EmeraldPrimary
-import com.example.ui.theme.LendOrange
 import kotlin.math.ceil
 import kotlin.math.max
 
@@ -496,237 +482,6 @@ private fun RateBox(
   }
 }
 
-@Composable
-fun KhataTab(
-  state: MeruHisabUiState,
-  onLendClick: () -> Unit,
-  onBorrowClick: () -> Unit,
-  onSettleKhata: (KhataRecord, String) -> Unit,
-  onNeedAccountWarning: () -> Unit,
-) {
-  val lends = state.khatas.filter { it.type == "LEND" }
-  val borrows = state.khatas.filter { it.type == "BORROW" }
-  val currency = state.preferences.displayCurrency
-  var settlingRecord by remember { mutableStateOf<KhataRecord?>(null) }
-
-  Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-    LazyColumn(
-      modifier = Modifier
-        .widthIn(max = 760.dp)
-        .fillMaxSize(),
-      contentPadding = PaddingValues(14.dp),
-    ) {
-      item {
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-          Button(
-            onClick = onLendClick,
-            colors = ButtonDefaults.buttonColors(containerColor = LendOrange),
-            modifier = Modifier
-              .weight(1f)
-              .height(50.dp)
-              .testTag("khata_lend_button"),
-          ) {
-            Icon(Icons.AutoMirrored.Filled.CallMade, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(4.dp))
-            Text("+ सापटी (Lend)", maxLines = 1)
-          }
-          Button(
-            onClick = onBorrowClick,
-            colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary),
-            modifier = Modifier
-              .weight(1f)
-              .height(50.dp)
-              .testTag("khata_borrow_button"),
-          ) {
-            Icon(Icons.AutoMirrored.Filled.CallReceived, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(4.dp))
-            Text("+ उधारो (Borrow)", maxLines = 1)
-          }
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-      }
-
-      item {
-        Text(
-          text = "हामीसँग कसले कति सापटी लगेको छ (Lend):",
-          style = MaterialTheme.typography.titleMedium,
-          fontWeight = FontWeight.Bold,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-      }
-
-      if (lends.isEmpty()) {
-        item {
-          Text(
-            text = "कुनै सापटी रेकर्ड छैन।",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
-        }
-      } else {
-        items(lends, key = { it.id }) { k ->
-          KhataRecordCard(
-            record = k,
-            displayCurrency = currency,
-            onSettleClick = {
-              if (state.accounts.isEmpty()) onNeedAccountWarning() else settlingRecord = k
-            },
-          )
-        }
-      }
-
-      item {
-        Spacer(modifier = Modifier.height(18.dp))
-        Text(
-          text = "हामीले कहाँ उधारो सामान / सापटी लिएका छौँ (Borrow):",
-          style = MaterialTheme.typography.titleMedium,
-          fontWeight = FontWeight.Bold,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-      }
-
-      if (borrows.isEmpty()) {
-        item {
-          Text(
-            text = "कुनै उधारो रेकर्ड छैन।",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
-        }
-      } else {
-        items(borrows, key = { it.id }) { k ->
-          KhataRecordCard(
-            record = k,
-            displayCurrency = currency,
-            onSettleClick = {
-              if (state.accounts.isEmpty()) onNeedAccountWarning() else settlingRecord = k
-            },
-          )
-        }
-      }
-    }
-  }
-
-  settlingRecord?.let { record ->
-    SettleKhataDialog(
-      record = record,
-      accounts = state.accounts,
-      onDismiss = { settlingRecord = null },
-      onConfirm = { accId ->
-        settlingRecord = null
-        onSettleKhata(record, accId)
-      },
-    )
-  }
-}
-
-@Composable
-private fun KhataRecordCard(
-  record: KhataRecord,
-  displayCurrency: String,
-  onSettleClick: () -> Unit,
-) {
-  Card(
-    modifier = Modifier
-      .fillMaxWidth()
-      .padding(bottom = 8.dp),
-    shape = RoundedCornerShape(16.dp),
-    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-  ) {
-    Row(
-      modifier = Modifier
-        .fillMaxWidth()
-        .padding(14.dp),
-      horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      Column(modifier = Modifier.weight(1f)) {
-        Text(
-          text = "${record.partyName} (${record.itemDetail})",
-          style = MaterialTheme.typography.titleMedium,
-          fontWeight = FontWeight.Bold,
-          textDecoration = if (record.settled) TextDecoration.LineThrough else null,
-        )
-        Text(
-          text = "वि.सं. ${BsCalendar.toNepaliDigits(record.bsDate)}",
-          style = MaterialTheme.typography.labelMedium,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-      }
-      Spacer(modifier = Modifier.width(8.dp))
-      if (record.settled) {
-        Surface(shape = RoundedCornerShape(10.dp), color = EmeraldContainer) {
-          Text(
-            text = "फर्स्योट भयो",
-            style = MaterialTheme.typography.labelMedium,
-            color = EmeraldPrimary,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-          )
-        }
-      } else {
-        Button(
-          onClick = onSettleClick,
-          modifier = Modifier.testTag("settle_khata_${record.id}"),
-        ) {
-          Text("फर्स्योट (${CurrencyService.format(record.amountNpr, displayCurrency)})")
-        }
-      }
-    }
-  }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SettleKhataDialog(
-  record: KhataRecord,
-  accounts: List<UserAccount>,
-  onDismiss: () -> Unit,
-  onConfirm: (String) -> Unit,
-) {
-  var selectedAccId by remember { mutableStateOf(accounts.first().id) }
-  var expanded by remember { mutableStateOf(false) }
-
-  AlertDialog(
-    onDismissRequest = onDismiss,
-    title = { Text("${record.partyName} को हिसाब फर्स्योट") },
-    text = {
-      ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-        val selectedName = accounts.firstOrNull { it.id == selectedAccId }?.customLabel ?: ""
-        OutlinedTextField(
-          value = selectedName,
-          onValueChange = {},
-          readOnly = true,
-          label = { Text("कुन खाताबाट मिलान गर्ने?") },
-          trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-          modifier = Modifier
-            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-            .fillMaxWidth(),
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-          accounts.forEach { acc ->
-            DropdownMenuItem(
-              text = { Text(acc.customLabel) },
-              onClick = {
-                selectedAccId = acc.id
-                expanded = false
-              },
-            )
-          }
-        }
-      }
-    },
-    confirmButton = {
-      Button(onClick = { onConfirm(selectedAccId) }) { Text("फर्स्योट गर्नुहोस्") }
-    },
-    dismissButton = {
-      TextButton(onClick = onDismiss) { Text("रद्द") }
-    },
-  )
-}
 
 @Composable
 fun SettingsTab(
