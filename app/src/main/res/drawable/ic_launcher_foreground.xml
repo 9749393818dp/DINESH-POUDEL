@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Wallet / Ledger Outer Body inside 66dp safe zone -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,34 C28,30.69 30.69,28 34,28 L72,28 C75.31,28 78,30.69 78,34 L78,42 L68,42 C63.58,42 60,45.58 60,50 L60,58 C60,62.42 63.58,66 68,66 L78,66 L78,74 C78,77.31 75.31,80 72,80 L34,80 C30.69,80 28,77.31 28,74 Z" />
+    <!-- Ledger Spine Accent -->
+    <path
+        android:fillColor="#1B5E20"
+        android:pathData="M34,36 L54,36 L54,41 L34,41 Z M34,46 L48,46 L48,51 L34,51 Z" />
+    <!-- Gold Coin / Clasp -->
+    <path
+        android:fillColor="#FFB300"
+        android:pathData="M68,45 L80,45 C82.21,45 84,46.79 84,49 L84,59 C84,61.21 82.21,63 80,63 L68,63 C64.69,63 62,60.31 62,57 L62,51 C62,47.69 64.69,45 68,45 Z" />
+    <!-- Inner Clasp Dot -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M71,54 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+    <!-- Peak / Meru Mountain Growth Line -->
+    <path
+        android:fillColor="#2E7D32"
+        android:pathData="M34,71 L43,60 L49,65 L57,56 L57,71 Z" />
+</vector>

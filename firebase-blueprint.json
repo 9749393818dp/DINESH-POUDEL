@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "UserPreferences": {
+      "title": "UserPreferences",
+      "description": "User settings for language, display currency, privacy balance toggle, and 4-digit PIN lock.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID of the owner." },
+        "lang": { "type": "string", "enum": ["ne", "en", "hi", "ar"] },
+        "displayCurrency": {
+          "type": "string",
+          "enum": ["NPR", "USD", "QAR", "AED", "SAR", "INR", "EUR", "GBP", "AUD", "MYR", "KRW", "JPY"]
+        },
+        "hideBalances": { "type": "boolean" },
+        "appPin": { "type": "string", "description": "Optional 4-digit PIN or empty string when unset." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["userId", "lang", "displayCurrency", "hideBalances", "appPin", "createdAt", "updatedAt"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Bank, digital wallet, or cash account owned by the user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "catalogId": { "type": "string" },
+        "customLabel": { "type": "string" },
+        "balanceNpr": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "catalogId", "customLabel", "balanceNpr", "createdAt", "updatedAt"]
+    },
+    "LedgerTransaction": {
+      "title": "LedgerTransaction",
+      "description": "Immutable financial statement entry with BS and AD timestamps and balance snapshots.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "refNo": { "type": "string" },
+        "type": { "type": "string", "enum": ["INCOME", "EXPENSE", "SAVING", "LEND", "BORROW", "TRANSFER"] },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "amountNpr": { "type": "number" },
+        "originalAmount": { "type": "number" },
+        "originalCurrency": { "type": "string" },
+        "accountId": { "type": "string" },
+        "toAccountId": { "type": "string" },
+        "prevBalanceNpr": { "type": "number" },
+        "newBalanceNpr": { "type": "number" },
+        "adTimestamp": { "type": "string" },
+        "bsDate": { "type": "string" },
+        "bsYear": { "type": "integer" },
+        "bsMonth": { "type": "integer" },
+        "note": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId", "refNo", "type", "title", "category",
+        "amountNpr", "originalAmount", "originalCurrency",
+        "accountId", "prevBalanceNpr", "newBalanceNpr",
+        "adTimestamp", "bsDate", "bsYear", "bsMonth", "note", "createdAt"
+      ]
+    },
+    "SavingsGoal": {
+      "title": "SavingsGoal",
+      "description": "Target savings goal with BS target date and daily/weekly/monthly frequency.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "targetNpr": { "type": "number" },
+        "savedNpr": { "type": "number" },
+        "targetBsDate": { "type": "string" },
+        "frequency": { "type": "string", "enum": ["DAILY", "WEEKLY", "MONTHLY"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "targetNpr", "savedNpr", "targetBsDate", "frequency", "createdAt", "updatedAt"]
+    },
+    "KhataRecord": {
+      "title": "KhataRecord",
+      "description": "Lending (LEND) or Borrowing/Udharo (BORROW) record with settlement status.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["LEND", "BORROW"] },
+        "partyName": { "type": "string" },
+        "itemDetail": { "type": "string" },
+        "amountNpr": { "type": "number" },
+        "bsDate": { "type": "string" },
+        "adTimestamp": { "type": "string" },
+        "settled": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "type", "partyName", "itemDetail", "amountNpr", "bsDate", "adTimestamp", "settled", "createdAt", "updatedAt"]
+    },
+    "AutoRecurringRule": {
+      "title": "AutoRecurringRule",
+      "description": "Automatic daily/weekly/monthly income or expense rule.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["INCOME", "EXPENSE"] },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "amountNpr": { "type": "number" },
+        "accountId": { "type": "string" },
+        "frequency": { "type": "string", "enum": ["DAILY", "WEEKLY", "MONTHLY"] },
+        "lastRunAdDate": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "type", "title", "category", "amountNpr", "accountId", "frequency", "lastRunAdDate", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPreferences" },
+      "description": "User-private application preferences and PIN configuration."
+    },
+    "/users/{userId}/accounts/{accountId}": {
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "User's configured banks, digital wallets, and cash accounts."
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/LedgerTransaction" },
+      "description": "Append-only ledger statement transactions for the user."
+    },
+    "/users/{userId}/goals/{goalId}": {
+      "schema": { "$ref": "#/entities/SavingsGoal" },
+      "description": "User's savings target plans."
+    },
+    "/users/{userId}/khatas/{khataId}": {
+      "schema": { "$ref": "#/entities/KhataRecord" },
+      "description": "User's lending and borrowing (udharo/khata) records."
+    },
+    "/users/{userId}/recurring_rules/{ruleId}": {
+      "schema": { "$ref": "#/entities/AutoRecurringRule" },
+      "description": "User's automated recurring transaction rules."
+    }
+  }
+}

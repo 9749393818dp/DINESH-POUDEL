@@ -1,0 +1,6 @@
+{
+  "name": "meru hisab",
+  "description": "Personal finance ledger with Nepal Bikram Sambat calendar, 68 banks and wallets, savings goals, lending/borrowing khata, auto-recurring rules, and multi-currency statements.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

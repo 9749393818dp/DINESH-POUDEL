@@ -1,0 +1,229 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isNum(v) { return v is int || v is float; }
+
+    // Validation Helpers
+    function isValidUserPreferences(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.lang is string && data.lang in ['ne', 'en', 'hi', 'ar'] &&
+             data.displayCurrency is string &&
+             data.displayCurrency in ['NPR', 'USD', 'QAR', 'AED', 'SAR', 'INR', 'EUR', 'GBP', 'AUD', 'MYR', 'KRW', 'JPY'] &&
+             data.hideBalances is bool &&
+             data.appPin is string && data.appPin.size() <= 4 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidUserAccount(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.catalogId is string && data.catalogId.size() >= 1 && data.catalogId.size() <= 32 &&
+             data.customLabel is string && data.customLabel.size() >= 1 && data.customLabel.size() <= 100 &&
+             isNum(data.balanceNpr) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidLedgerTransaction(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.refNo is string && data.refNo.size() >= 1 && data.refNo.size() <= 64 &&
+             data.type is string && data.type in ['INCOME', 'EXPENSE', 'SAVING', 'LEND', 'BORROW', 'TRANSFER'] &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 120 &&
+             isNum(data.amountNpr) && data.amountNpr >= 0 &&
+             isNum(data.originalAmount) && data.originalAmount >= 0 &&
+             data.originalCurrency is string && data.originalCurrency.size() >= 1 && data.originalCurrency.size() <= 10 &&
+             data.accountId is string && data.accountId.size() >= 1 && data.accountId.size() <= 128 &&
+             (!('toAccountId' in data) || data.toAccountId == null || (data.toAccountId is string && data.toAccountId.size() >= 1 && data.toAccountId.size() <= 128)) &&
+             isNum(data.prevBalanceNpr) &&
+             isNum(data.newBalanceNpr) &&
+             data.adTimestamp is string && data.adTimestamp.size() >= 1 && data.adTimestamp.size() <= 40 &&
+             data.bsDate is string && data.bsDate.size() >= 1 && data.bsDate.size() <= 20 &&
+             data.bsYear is int && data.bsYear >= 2070 && data.bsYear <= 2100 &&
+             data.bsMonth is int && data.bsMonth >= 1 && data.bsMonth <= 12 &&
+             data.note is string && data.note.size() <= 500 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidSavingsGoal(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             isNum(data.targetNpr) && data.targetNpr > 0 &&
+             isNum(data.savedNpr) && data.savedNpr >= 0 &&
+             data.targetBsDate is string && data.targetBsDate.size() >= 1 && data.targetBsDate.size() <= 20 &&
+             data.frequency is string && data.frequency in ['DAILY', 'WEEKLY', 'MONTHLY'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidKhataRecord(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.type is string && data.type in ['LEND', 'BORROW'] &&
+             data.partyName is string && data.partyName.size() >= 1 && data.partyName.size() <= 120 &&
+             data.itemDetail is string && data.itemDetail.size() >= 1 && data.itemDetail.size() <= 200 &&
+             isNum(data.amountNpr) && data.amountNpr > 0 &&
+             data.bsDate is string && data.bsDate.size() >= 1 && data.bsDate.size() <= 20 &&
+             data.adTimestamp is string && data.adTimestamp.size() >= 1 && data.adTimestamp.size() <= 40 &&
+             data.settled is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidAutoRecurringRule(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.type is string && data.type in ['INCOME', 'EXPENSE'] &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 120 &&
+             isNum(data.amountNpr) && data.amountNpr > 0 &&
+             data.accountId is string && data.accountId.size() >= 1 && data.accountId.size() <= 128 &&
+             data.frequency is string && data.frequency in ['DAILY', 'WEEKLY', 'MONTHLY'] &&
+             data.lastRunAdDate is string && data.lastRunAdDate.size() >= 1 && data.lastRunAdDate.size() <= 20 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // 1. User Preferences Document
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId) && isValidId(userId) &&
+                       incoming().keys().hasAll(['userId', 'lang', 'displayCurrency', 'hideBalances', 'appPin', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'lang', 'displayCurrency', 'hideBalances', 'appPin', 'createdAt', 'updatedAt']) &&
+                       isValidUserPreferences(incoming(), userId);
+
+      allow update: if isOwner(userId) && isValidId(userId) &&
+                       isValidUserPreferences(incoming(), userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['lang', 'displayCurrency', 'hideBalances', 'appPin', 'updatedAt']);
+
+      allow delete: if false;
+
+      // 2. User Financial Accounts
+      match /accounts/{accountId} {
+        allow get: if isOwner(userId) && isValidId(accountId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) && isValidId(accountId) &&
+                         incoming().keys().hasAll(['userId', 'catalogId', 'customLabel', 'balanceNpr', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'catalogId', 'customLabel', 'balanceNpr', 'createdAt', 'updatedAt']) &&
+                         isValidUserAccount(incoming(), userId);
+
+        allow update: if isOwner(userId) && isValidId(accountId) &&
+                         isValidUserAccount(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().catalogId == existing().catalogId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           incoming().diff(existing()).affectedKeys().hasOnly(['balanceNpr', 'updatedAt']) ||
+                           incoming().diff(existing()).affectedKeys().hasOnly(['customLabel', 'updatedAt'])
+                         );
+
+        allow delete: if isOwner(userId) && isValidId(accountId);
+      }
+
+      // 3. Append-Only Ledger Statement Transactions
+      match /transactions/{transactionId} {
+        allow get: if isOwner(userId) && isValidId(transactionId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) && isValidId(transactionId) &&
+                         incoming().keys().hasAll([
+                           'userId', 'refNo', 'type', 'title', 'category',
+                           'amountNpr', 'originalAmount', 'originalCurrency',
+                           'accountId', 'prevBalanceNpr', 'newBalanceNpr',
+                           'adTimestamp', 'bsDate', 'bsYear', 'bsMonth', 'note', 'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'refNo', 'type', 'title', 'category',
+                           'amountNpr', 'originalAmount', 'originalCurrency',
+                           'accountId', 'toAccountId', 'prevBalanceNpr', 'newBalanceNpr',
+                           'adTimestamp', 'bsDate', 'bsYear', 'bsMonth', 'note', 'createdAt'
+                         ]) &&
+                         isValidLedgerTransaction(incoming(), userId);
+
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // 4. Savings Goals
+      match /goals/{goalId} {
+        allow get: if isOwner(userId) && isValidId(goalId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) && isValidId(goalId) &&
+                         incoming().keys().hasAll(['userId', 'title', 'targetNpr', 'savedNpr', 'targetBsDate', 'frequency', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'title', 'targetNpr', 'savedNpr', 'targetBsDate', 'frequency', 'createdAt', 'updatedAt']) &&
+                         isValidSavingsGoal(incoming(), userId);
+
+        allow update: if isOwner(userId) && isValidId(goalId) &&
+                         isValidSavingsGoal(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           incoming().diff(existing()).affectedKeys().hasOnly(['savedNpr', 'updatedAt']) ||
+                           incoming().diff(existing()).affectedKeys().hasOnly(['title', 'targetNpr', 'targetBsDate', 'frequency', 'updatedAt'])
+                         );
+
+        allow delete: if isOwner(userId) && isValidId(goalId);
+      }
+
+      // 5. Khata (Lend & Borrow) Records
+      match /khatas/{khataId} {
+        allow get: if isOwner(userId) && isValidId(khataId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) && isValidId(khataId) &&
+                         incoming().keys().hasAll(['userId', 'type', 'partyName', 'itemDetail', 'amountNpr', 'bsDate', 'adTimestamp', 'settled', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'type', 'partyName', 'itemDetail', 'amountNpr', 'bsDate', 'adTimestamp', 'settled', 'createdAt', 'updatedAt']) &&
+                         isValidKhataRecord(incoming(), userId);
+
+        allow update: if isOwner(userId) && isValidId(khataId) &&
+                         isValidKhataRecord(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().type == existing().type &&
+                         incoming().createdAt == existing().createdAt &&
+                         existing().settled == false &&
+                         incoming().settled == true &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['settled', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(khataId);
+      }
+
+      // 6. Auto-Recurring Rules
+      match /recurring_rules/{ruleId} {
+        allow get: if isOwner(userId) && isValidId(ruleId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) && isValidId(ruleId) &&
+                         incoming().keys().hasAll(['userId', 'type', 'title', 'category', 'amountNpr', 'accountId', 'frequency', 'lastRunAdDate', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'type', 'title', 'category', 'amountNpr', 'accountId', 'frequency', 'lastRunAdDate', 'createdAt', 'updatedAt']) &&
+                         isValidAutoRecurringRule(incoming(), userId);
+
+        allow update: if isOwner(userId) && isValidId(ruleId) &&
+                         isValidAutoRecurringRule(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['lastRunAdDate', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(ruleId);
+      }
+    }
+  }
+}
